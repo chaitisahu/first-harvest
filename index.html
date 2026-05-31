@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0" />
+<title>First Harvest</title>
+<meta name="description" content="From dream to first harvest — a calm, guided way to grow your first crop." />
+<!-- Basic PWA / mobile meta (full installable PWA also needs a manifest.json + service worker file alongside this) -->
+<meta name="theme-color" content="#235E3B" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="First Harvest" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23235E3B'/%3E%3Ctext y='72' x='50' font-size='58' text-anchor='middle'%3E%F0%9F%8C%B1%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #FAF9F4; }
+  #root { min-height: 100%; }
+  * { -webkit-tap-highlight-color: transparent; }
+  @keyframes up { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+  @keyframes pop { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:none} }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  .fh-up { animation: up .4s cubic-bezier(.2,.7,.3,1) both; }
+  .fh-pop { animation: pop .35s ease both; }
+  .tap { transition: transform .12s ease, background .15s ease, border-color .15s ease, box-shadow .2s ease; cursor:pointer; }
+  .tap:active { transform: scale(.985); }
+  input, textarea, button { font-family:'Hanken Grotesk',sans-serif; }
+  input:focus, textarea:focus { border-color:#2F7A4D !important; outline:none; }
+  ::-webkit-scrollbar{ width:0; height:0; }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+// ============================ THEME ============================
+const C = {
+  bg:"#FAF9F4", surface:"#FFFFFF", ink:"#1B1C19", inkSoft:"#6C6E64", muted:"#9A9C8F",
+  green:"#2F7A4D", greenDeep:"#235E3B", greenSoft:"#EAF3EC",
+  amber:"#C8852B", amberSoft:"#FBF1DF", border:"#ECEBE2", line:"#F0EFE7",
+};
+
+// ============================ GEOGRAPHY ============================
+const COUNTRIES = ["Austria","Australia","Bangladesh","Belgium","Brazil","Canada","China","Croatia","Czechia","Denmark","Finland","France","Germany","Greece","Hungary","India","Indonesia","Ireland","Italy","Japan","Kenya","Malaysia","Mexico","Nepal","Netherlands","New Zealand","Norway","Pakistan","Philippines","Poland","Portugal","Romania","Singapore","Slovakia","Slovenia","South Africa","South Korea","Spain","Sri Lanka","Sweden","Switzerland","Thailand","Turkey","Ukraine","United Arab Emirates","United Kingdom","United States","Vietnam"];
+const SOUTHERN = new Set(["Australia","New Zealand","South Africa","Brazil","Argentina","Chile","Uruguay","Indonesia"]);
+const STATES = {
+  "India":["Andhra Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra","Odisha","Punjab","Rajasthan","Tamil Nadu","Telangana","Uttar Pradesh","Uttarakhand","West Bengal","Delhi"],
+  "United States":["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","Ohio","Oklahoma","Oregon","Pennsylvania","South Carolina","Tennessee","Texas","Utah","Vermont","Virginia","Washington","Wisconsin"],
+  "Austria":["Burgenland","Carinthia","Lower Austria","Salzburg","Styria","Tyrol","Upper Austria","Vienna","Vorarlberg"],
+  "Germany":["Baden-Württemberg","Bavaria","Berlin","Brandenburg","Bremen","Hamburg","Hesse","Lower Saxony","North Rhine-Westphalia","Rhineland-Palatinate","Saarland","Saxony","Schleswig-Holstein","Thuringia"],
+  "Italy":["Abruzzo","Apulia","Calabria","Campania","Emilia-Romagna","Lazio","Liguria","Lombardy","Piedmont","Sardinia","Sicily","Tuscany","Umbria","Veneto"],
+  "United Kingdom":["England","Scotland","Wales","Northern Ireland"],
+  "Australia":["New South Wales","Queensland","South Australia","Tasmania","Victoria","Western Australia","Northern Territory","ACT"],
+  "Canada":["Alberta","British Columbia","Manitoba","Nova Scotia","Ontario","Quebec","Saskatchewan"],
+};
+const SEASONS = ["Spring","Summer","Autumn","Winter"];
+function hemisphereOf(c){ return SOUTHERN.has(c) ? "south" : "north"; }
+function currentSeason(country){
+  const m = new Date().getMonth();
+  const north = ["Winter","Winter","Spring","Spring","Spring","Summer","Summer","Summer","Autumn","Autumn","Autumn","Winter"][m];
+  if(hemisphereOf(country)==="south"){ const map={Winter:"Summer",Spring:"Autumn",Summer:"Winter",Autumn:"Spring"}; return map[north]; }
+  return north;
+}
+
+// ============================ CROP KNOWLEDGE (offline engine) ============================
+// sun: required minimum — 'full' | 'partial' | 'any'.  seasons: good sowing/planting seasons.
+const CROP_DATA = [
+  { name:"Lettuce", emoji:"🥬", difficulty:"Very easy", days:45, sun:"any", seasons:["Spring","Summer","Autumn"], note:"Fast, forgiving and pick-as-you-go — the perfect first crop.", tasks:["Sow seeds thinly in moist soil","Keep the soil lightly damp","Thin out crowded seedlings","Pick outer leaves as they grow"] },
+  { name:"Rocket", emoji:"🌿", difficulty:"Very easy", days:30, sun:"any", seasons:["Spring","Summer","Autumn"], note:"Ready in about a month and almost impossible to fail.", tasks:["Scatter seeds and cover lightly","Water gently every few days","Snip leaves once 8cm tall"] },
+  { name:"Radish", emoji:"🔴", difficulty:"Very easy", days:28, sun:"partial", seasons:["Spring","Summer","Autumn"], note:"The fastest reward in the garden — great for confidence.", tasks:["Sow seeds 1cm deep","Keep soil moist","Pull as soon as roots swell"] },
+  { name:"Spinach", emoji:"🍃", difficulty:"Easy", days:40, sun:"partial", seasons:["Spring","Autumn"], note:"Loves cooler weather — best in spring and autumn.", tasks:["Sow in cool soil","Water regularly","Harvest outer leaves"] },
+  { name:"Kale", emoji:"🥗", difficulty:"Easy", days:60, sun:"partial", seasons:["Spring","Autumn","Winter"], note:"Tough, hardy and keeps giving through cold months.", tasks:["Sow or plant seedlings","Water in dry spells","Pick lower leaves first"] },
+  { name:"Carrot", emoji:"🥕", difficulty:"Easy", days:75, sun:"full", seasons:["Spring","Summer"], note:"Needs loose, stone-free soil and patience — but very rewarding.", tasks:["Sow into fine, loose soil","Thin seedlings to 5cm apart","Keep evenly watered"] },
+  { name:"Beetroot", emoji:"🟣", difficulty:"Easy", days:55, sun:"partial", seasons:["Spring","Summer","Autumn"], note:"Easy-going and you can eat the leaves too.", tasks:["Sow seeds 2cm deep","Thin to one plant per cluster","Harvest at golf-ball size"] },
+  { name:"Beans", emoji:"🫛", difficulty:"Easy", days:55, sun:"full", seasons:["Summer"], note:"Quick, generous and loves warm summer soil.", tasks:["Sow after the last frost","Water at the base","Pick often to keep them coming"] },
+  { name:"Peas", emoji:"🟢", difficulty:"Easy", days:65, sun:"partial", seasons:["Spring","Autumn"], note:"Sweet and cheerful — best in milder weather.", tasks:["Sow in cool soil","Give them something to climb","Pick pods young and tender"] },
+  { name:"Tomato", emoji:"🍅", difficulty:"Moderate", days:75, sun:"full", seasons:["Summer"], note:"Needs warmth and full sun — wonderful, but start in summer.", tasks:["Plant a young seedling after frost","Water deeply and regularly","Support the stem as it grows","Pinch side shoots"] },
+  { name:"Pepper", emoji:"🫑", difficulty:"Moderate", days:90, sun:"full", seasons:["Summer"], note:"Loves heat and sun — a patient summer crop.", tasks:["Plant in the warmest spot","Water consistently","Feed once flowers appear"] },
+  { name:"Cucumber", emoji:"🥒", difficulty:"Moderate", days:60, sun:"full", seasons:["Summer"], note:"Thirsty and sun-loving, but very productive in summer.", tasks:["Plant after frost","Water generously","Harvest young and often"] },
+  { name:"Potato", emoji:"🥔", difficulty:"Easy", days:90, sun:"full", seasons:["Spring","Summer"], note:"Plant once, dig up a treasure — magical for beginners.", tasks:["Plant seed potatoes","Mound soil over shoots","Harvest when flowers fade"] },
+  { name:"Onion", emoji:"🧅", difficulty:"Easy", days:100, sun:"full", seasons:["Spring"], note:"Plant little sets in spring and almost forget about them.", tasks:["Push sets into soil, tip showing","Weed gently","Harvest when tops fall over"] },
+  { name:"Garlic", emoji:"🧄", difficulty:"Very easy", days:120, sun:"full", seasons:["Autumn","Winter"], note:"Plant a clove in autumn, harvest a bulb next summer.", tasks:["Plant single cloves in autumn","Mulch over winter","Lift when leaves yellow"] },
+  { name:"Strawberry", emoji:"🍓", difficulty:"Easy", days:90, sun:"full", seasons:["Spring","Summer"], note:"A few plants give years of sweet rewards.", tasks:["Plant with the crown at soil level","Water at the base","Tuck straw under ripening fruit"] },
+  { name:"Basil", emoji:"🪴", difficulty:"Easy", days:60, sun:"full", seasons:["Summer"], note:"Loves warmth and a sunny sill or patio.", tasks:["Sow or plant in warm soil","Water in the morning","Pinch the tips to keep it bushy"] },
+  { name:"Parsley", emoji:"🌱", difficulty:"Easy", days:70, sun:"partial", seasons:["Spring","Summer","Autumn"], note:"Slow to start, then gives all season long.", tasks:["Soak seeds overnight, then sow","Be patient — it's slow to sprout","Snip outer stems as needed"] },
+];
+const CROP_BY_NAME = Object.fromEntries(CROP_DATA.map(c=>[c.name,c]));
+const sunRank = (s)=> s && s.startsWith("Full")?2 : s && s.startsWith("Partial")?1 : 0;
+const cropSunReq = (req)=> req==="full"?2 : req==="partial"?1 : 0;
+
+function suitability(crop, profile){
+  const seasonOk = crop.seasons.some(s=>profile.seasons.includes(s));
+  const sunOk = sunRank(profile.sunlight) >= cropSunReq(crop.sun);
+  if(seasonOk && sunOk) return { ok:true };
+  if(!seasonOk) return { ok:false, reason:`${crop.name} does best in ${crop.seasons.join(" or ")}. Try planting it then for an easier first go.` };
+  return { ok:false, reason:`${crop.name} wants a sunnier spot (${crop.sun} sun). It may grow slowly where you've got less light.` };
+}
+function scoreCrop(crop, profile){
+  let s = 0;
+  s += crop.difficulty==="Very easy"?3 : crop.difficulty==="Easy"?2 : 0;
+  s += Math.max(0, 4 - crop.days/30);
+  if(crop.seasons.some(x=>profile.seasons.includes(x))) s += 4;
+  if(sunRank(profile.sunlight) >= cropSunReq(crop.sun)) s += 3;
+  if(profile.space==="A few pots" && crop.days<=60) s += 1;
+  return s;
+}
+function buildPlan(profile, picks, aiPick){
+  let chosen;
+  if(aiPick){
+    chosen = [...CROP_DATA].sort((a,b)=>scoreCrop(b,profile)-scoreCrop(a,profile)).slice(0,4);
+  } else {
+    chosen = picks.map(p=>CROP_BY_NAME[p.name]).filter(Boolean);
+  }
+  const chosenNames = new Set(chosen.map(c=>c.name));
+  const crops = chosen.map((c,i)=>{
+    const suit = suitability(c, profile);
+    return {
+      id:"c"+Date.now()+i, name:c.name, emoji:c.emoji, difficulty:c.difficulty,
+      daysToHarvest:c.days, sun:c.sun, suitable:suit.ok,
+      note: suit.ok ? c.note : suit.reason,
+      plantedDate:null,
+      tasks: c.tasks.slice(0,4).map((t,j)=>({ id:"t"+i+j, text:t, done:false })),
+    };
+  });
+  const suggestions = [...CROP_DATA]
+    .filter(c=>!chosenNames.has(c.name) && suitability(c,profile).ok)
+    .sort((a,b)=>scoreCrop(b,profile)-scoreCrop(a,profile))
+    .slice(0,2).map(c=>({ name:c.name, emoji:c.emoji }));
+  const season = currentSeason(profile.country);
+  const where = profile.state || profile.country;
+  const summary = `It's ${season.toLowerCase()} in ${where} — a lovely time to begin. Here's a calm plan built around your ${profile.seasons.join(" & ").toLowerCase()} planting.`;
+  return { crops, suggestions, summary };
+}
+
+// ============================ STORAGE (localStorage) ============================
+const KEY="garden:state", AKEY="garden:apikey";
+function loadState(){ try{ const r=localStorage.getItem(KEY); return r?JSON.parse(r):null; }catch{ return null; } }
+function saveState(s){ try{ localStorage.setItem(KEY, JSON.stringify(s)); }catch{} }
+function getApiKey(){ try{ return localStorage.getItem(AKEY)||""; }catch{ return ""; } }
+function setApiKey(k){ try{ k?localStorage.setItem(AKEY,k):localStorage.removeItem(AKEY); }catch{} }
+
+// ============================ CLAUDE API (optional) ============================
+function extractText(data){ return (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim(); }
+async function callClaude(system, user){
+  const key = getApiKey();
+  if(!key) return null;
+  try{
+    const res = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-api-key":key,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true",
+      },
+      // You can change the model string below to any model your key has access to.
+      body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:400, system, messages:[{role:"user",content:user}] }),
+    });
+    if(!res.ok) return null;
+    return extractText(await res.json());
+  }catch{ return null; }
+}
+const PERSONA = "The grower is a retired complete beginner with a backyard, plenty of relaxed time, and no experience. Use warm, simple, jargon-free language. Favour forgiving, rewarding crops. Prioritise a real first harvest over yield.";
+
+// ============================ LOCAL COACHING FALLBACKS ============================
+function localDayTip(state){
+  const planted = state.crops.filter(c=>c.plantedDate);
+  if(planted.length===0) return "Pick a calm afternoon this week to prepare your patch and get your seeds in. Starting is the hardest part — and you're almost there.";
+  const tips = [
+    "Have a wander outside and push a finger into the soil — if it's dry below the surface, give everything a gentle morning water.",
+    "Look under a few leaves today. Spotting small things early is what keeps a garden healthy.",
+    "Pull any weeds while they're tiny — five minutes now saves an hour later.",
+    "Notice what's changed since yesterday. Growth is slow up close, but it's always happening.",
+  ];
+  return tips[new Date().getDate() % tips.length];
+}
+function localCropTip(stage, name){
+  const n = name.toLowerCase();
+  const map = {
+    "Ready to plant":`Get your ${n} in when you have a calm hour. Firm the soil gently and water it in well.`,
+    "Just sown":`Keep the soil for your ${n} lightly moist — never soggy. Seeds need warmth and patience, not fussing.`,
+    "Sprouting":`Your ${n} is finding its feet. Thin out any crowded seedlings so the strongest have room to grow.`,
+    "Growing":`Steady watering is everything now. Check the soil every couple of days and water in the morning if it's dry.`,
+    "Maturing":`Almost there. Keep an eye out and resist the urge to over-water as your ${n} fills out.`,
+    "Ready to harvest":`Time to pick your ${n}! Harvest in the cool of the morning for the best flavour.`,
+  };
+  return map[stage] || `Keep things simple with your ${n}: check the soil, water gently when dry, and enjoy watching it grow.`;
+}
+function localJournalReply(text){
+  const t = text.toLowerCase();
+  if(/yellow|wilt|droop|brown|spot|pest|bug|hole|dying|dead/.test(t))
+    return "Thanks for noticing that — catching small troubles early is exactly the right instinct. Check the soil moisture first; most beginner worries come down to too much or too little water. 🌱";
+  if(/harvest|picked|first|ripe|flower|fruit/.test(t))
+    return "Wonderful — that's the moment it all becomes worth it. Note the date so you remember it for next season. 🎉";
+  return "Lovely note. Noticing small changes day to day is exactly how good gardeners are made — keep it up. 🌱";
+}
+
+// ============================ HELPERS ============================
+function progress(crop){
+  if(!crop.plantedDate) return { stage:"Ready to plant", pct:0, daysLeft:crop.daysToHarvest, planted:false, daysSince:0 };
+  const days = Math.floor((Date.now()-crop.plantedDate)/86400000);
+  const pct = Math.min(100, Math.round((days/crop.daysToHarvest)*100));
+  let stage="Just sown";
+  if(pct>=100) stage="Ready to harvest";
+  else if(pct>=70) stage="Maturing";
+  else if(pct>=30) stage="Growing";
+  else if(pct>=8) stage="Sprouting";
+  return { stage, pct, daysLeft:Math.max(0,crop.daysToHarvest-days), planted:true, daysSince:days };
+}
+const todayKey = ()=> new Date().toISOString().slice(0,10);
+function streakOf(journal){
+  const days = new Set(journal.map(j=>j.date));
+  let n=0; const d=new Date();
+  if(!days.has(todayKey())) d.setDate(d.getDate()-1);
+  for(;;){ const k=d.toISOString().slice(0,10); if(days.has(k)){ n++; d.setDate(d.getDate()-1);} else break; }
+  return n;
+}
+
+// ============================ APP ============================
+function App(){
+  const [view,setView]=useState("loading");
+  const [state,setState]=useState(null);
+  const [activeCrop,setActiveCrop]=useState(null);
+  const [showSettings,setShowSettings]=useState(false);
+  const [aiOn,setAiOn]=useState(!!getApiKey());
+
+  useEffect(()=>{ const s=loadState(); if(s&&s.crops&&s.crops.length){ setState(s); setView("home"); } else setView("onboarding"); },[]);
+  const persist=(s)=>{ setState(s); saveState(s); };
+
+  function generate(profile, picks, aiPick){
+    setView("generating");
+    setTimeout(()=>{ // tiny delay so the loading state reads naturally
+      const out = buildPlan(profile, picks, aiPick);
+      persist({ profile, crops:out.crops, journal:[], summary:out.summary, suggestions:out.suggestions, createdAt:Date.now() });
+      setView("home");
+    }, 650);
+  }
+
+  const Shell=({children,pad=true,nav=false})=>(
+    <div style={{background:C.bg,minHeight:"100%",fontFamily:"'Hanken Grotesk',sans-serif",color:C.ink}}>
+      <div style={{maxWidth:480,margin:"0 auto",minHeight:"100%",position:"relative",padding:pad?"0 20px":0,paddingBottom:nav?90:28}}>{children}</div>
+    </div>
+  );
+
+  if(view==="loading")
+    return <Shell><div style={{paddingTop:160,textAlign:"center"}}><Spinner/><div style={{color:C.muted,marginTop:14}}>Opening your garden…</div></div></Shell>;
+
+  if(view==="onboarding")
+    return <Shell><Onboarding onDone={generate}/></Shell>;
+
+  if(view==="generating")
+    return <Shell><div style={{paddingTop:150,textAlign:"center"}} className="fh-up"><Spinner big/><div style={{fontFamily:"'Fraunces',serif",fontSize:24,marginTop:22}}>Growing your plan</div><div style={{color:C.inkSoft,marginTop:8}}>Matching crops to your spot and season…</div></div></Shell>;
+
+  if(view==="crop" && activeCrop){
+    const crop = state.crops.find(c=>c.id===activeCrop);
+    return (<Shell nav>
+      <CropDetail crop={crop} profile={state.profile} aiOn={aiOn}
+        journal={state.journal.filter(j=>j.cropId===crop.id)}
+        onBack={()=>setView("home")}
+        onUpdate={u=>persist({...state,crops:state.crops.map(c=>c.id===u.id?u:c)})}
+        onJournal={e=>persist({...state,journal:[e,...state.journal]})}/>
+      <BottomNav view="home" go={setView}/>
+    </Shell>);
+  }
+
+  if(view==="journal")
+    return (<Shell nav>
+      <Journal state={state} aiOn={aiOn} onAdd={e=>persist({...state,journal:[e,...state.journal]})}/>
+      <BottomNav view="journal" go={setView}/>
+    </Shell>);
+
+  return (<Shell nav>
+    <Home state={state} aiOn={aiOn}
+      openCrop={id=>{setActiveCrop(id);setView("crop");}}
+      goJournal={()=>setView("journal")}
+      openSettings={()=>setShowSettings(true)}
+      onReset={()=>{persist({...state,crops:[]});setView("onboarding");}}/>
+    <BottomNav view="home" go={setView}/>
+    {showSettings && <Settings aiOn={aiOn} onClose={()=>setShowSettings(false)} onChange={()=>setAiOn(!!getApiKey())}/>}
+  </Shell>);
+}
+
+// ============================ ONBOARDING ============================
+function Onboarding({onDone}){
+  const [step,setStep]=useState(0);
+  const [country,setCountry]=useState("");
+  const [stateName,setStateName]=useState("");
+  const [seasons,setSeasons]=useState([]);
+  const [sunlight,setSunlight]=useState("");
+  const [space,setSpace]=useState("");
+  const [picks,setPicks]=useState([]);
+  const [aiPick,setAiPick]=useState(false);
+  const stateOptions = STATES[country]||[];
+  const season = country?currentSeason(country):null;
+  const steps=["Where","When","Space","Crops"];
+  const canNext = (step===0&&country)||(step===1&&seasons.length)||(step===2&&sunlight&&space)||(step===3&&(picks.length||aiPick));
+  const finish=()=>onDone({country,state:stateName,seasons,sunlight,space},picks,aiPick);
+
+  return (
+    <div style={{paddingTop:26}}>
+      <Brand/>
+      <div style={{display:"flex",gap:6,margin:"22px 0 30px"}}>
+        {steps.map((_,i)=><div key={i} style={{flex:1,height:4,borderRadius:99,background:i<=step?C.green:C.border,transition:"background .3s"}}/>)}
+      </div>
+      <div className="fh-up" key={step}>
+        {step===0&&<>
+          <H2>Where's your garden?</H2><Sub>This sets your climate, season and planting times.</Sub>
+          <Label>Country</Label>
+          <SearchSelect value={country} onChange={v=>{setCountry(v);setStateName("");}} options={COUNTRIES} placeholder="Search your country"/>
+          <div style={{height:14}}/>
+          <Label>State / region</Label>
+          <SearchSelect value={stateName} onChange={setStateName} options={stateOptions} placeholder={stateOptions.length?"Search or type your region":"Type your region"} allowCustom disabled={!country}/>
+          {country&&<div style={{marginTop:16,fontSize:14.5,color:C.inkSoft}}>🧭 {hemisphereOf(country)==="south"?"Southern":"Northern"} hemisphere · it's <strong style={{color:C.green}}>{currentSeason(country)}</strong> there now.</div>}
+        </>}
+        {step===1&&<>
+          <H2>When do you want to plant?</H2><Sub>Pick one or more seasons. We'll plan around them.</Sub>
+          <div style={{display:"grid",gap:11}}>
+            {SEASONS.map(s=>{const on=seasons.includes(s),now=s===season;return(
+              <div key={s} className="tap" onClick={()=>setSeasons(on?seasons.filter(x=>x!==s):[...seasons,s])}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"16px 18px",borderRadius:14,background:on?C.greenSoft:C.surface,border:`1.5px solid ${on?C.green:C.border}`}}>
+                <CheckBox on={on}/><span style={{fontSize:17,fontWeight:600,flex:1}}>{s}</span>
+                {now&&<span style={{fontSize:12.5,fontWeight:700,color:C.amber,background:C.amberSoft,padding:"3px 9px",borderRadius:99}}>NOW</span>}
+              </div>);})}
+          </div>
+        </>}
+        {step===2&&<>
+          <H2>Tell us about your spot</H2><Sub>Two quick taps — it makes the crops much more accurate.</Sub>
+          <Label>How much sun?</Label>
+          <Choice value={sunlight} setValue={setSunlight} options={[{v:"Full sun (6+ hrs)",l:"Sunny most of the day"},{v:"Partial (3-6 hrs)",l:"A mix of sun and shade"},{v:"Mostly shade",l:"Little direct sun"}]}/>
+          <div style={{height:18}}/>
+          <Label>How big a patch?</Label>
+          <Choice value={space} setValue={setSpace} options={[{v:"A few pots",l:"Pots or a tiny corner"},{v:"Small bed 1-2m²",l:"A small bed"},{v:"Medium bed 3-5m²",l:"A medium bed"}]}/>
+        </>}
+        {step===3&&<>
+          <H2>What would you like to grow?</H2><Sub>Pick up to 5 — or let us choose for you.</Sub>
+          <div className="tap" onClick={()=>{setAiPick(!aiPick);setPicks([]);}}
+            style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderRadius:14,marginBottom:14,background:aiPick?C.greenSoft:C.surface,border:`1.5px solid ${aiPick?C.green:C.border}`}}>
+            <span style={{fontSize:20}}>✨</span><span style={{flex:1,fontWeight:600,fontSize:15.5}}>Not sure — choose the best crops for me</span><CheckBox on={aiPick} round/>
+          </div>
+          {!aiPick&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
+            {CROP_DATA.map(c=>{const on=picks.find(p=>p.name===c.name),full=picks.length>=5&&!on;return(
+              <div key={c.name} className="tap" onClick={()=>{if(full)return;setPicks(on?picks.filter(p=>p.name!==c.name):[...picks,c]);}}
+                style={{textAlign:"center",padding:"13px 6px",borderRadius:13,background:on?C.greenSoft:C.surface,border:`1.5px solid ${on?C.green:C.border}`,opacity:full?.45:1}}>
+                <div style={{fontSize:26}}>{c.emoji}</div><div style={{fontSize:13,fontWeight:600,marginTop:4,color:on?C.greenDeep:C.ink}}>{c.name}</div>
+              </div>);})}
+          </div>}
+          {!aiPick&&<div style={{marginTop:12,fontSize:13.5,color:C.muted,textAlign:"center"}}>{picks.length}/5 selected</div>}
+        </>}
+      </div>
+      <div style={{display:"flex",gap:12,marginTop:30}}>
+        {step>0&&<button className="tap" onClick={()=>setStep(step-1)} style={{background:"none",border:`1.5px solid ${C.border}`,borderRadius:99,padding:"15px 22px",fontSize:16,fontWeight:600,color:C.inkSoft}}>Back</button>}
+        <button className="tap" disabled={!canNext} onClick={()=>step<3?setStep(step+1):finish()}
+          style={{flex:1,background:canNext?C.green:C.border,color:canNext?"#fff":C.muted,border:"none",borderRadius:99,padding:16,fontSize:16.5,fontWeight:700}}>
+          {step<3?"Continue":"Create my garden"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================ HOME ============================
+function Home({state,aiOn,openCrop,goJournal,openSettings,onReset}){
+  const [tip,setTip]=useState(null), [tipLoad,setTipLoad]=useState(false);
+  const planted=state.crops.filter(c=>c.plantedDate);
+  const streak=streakOf(state.journal);
+  const journaledToday=state.journal.some(j=>j.date===todayKey());
+  const todays=[];
+  state.crops.forEach(c=>c.tasks.filter(t=>!t.done).slice(0,1).forEach(t=>todays.push({crop:c,task:t})));
+
+  async function getTip(){
+    setTipLoad(true);
+    const names=state.crops.map(c=>`${c.name} (${progress(c).stage})`).join("; ");
+    const ai=await callClaude(`Warm gardening coach. ${PERSONA} Give ONE short specific thing to check or do today (under 30 words). Plain text, no preamble.`,`Garden: ${names||"nothing planted yet"}. Location: ${state.profile.country}.`);
+    setTip(ai||localDayTip(state)); setTipLoad(false);
+  }
+
+  return (
+    <div style={{paddingTop:24}}>
+      <div className="fh-up" style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20}}>
+        <div>
+          <div style={{fontSize:14.5,color:C.muted}}>{state.profile.state?state.profile.state+", ":""}{state.profile.country} · {currentSeason(state.profile.country)}</div>
+          <h1 style={{fontFamily:"'Fraunces',serif",fontSize:28,fontWeight:600,margin:"4px 0 0"}}>Your garden</h1>
+        </div>
+        <button className="tap" onClick={openSettings} aria-label="Settings" style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,width:42,height:42,fontSize:18,cursor:"pointer"}}>⚙️</button>
+      </div>
+
+      <div className="fh-up" style={{display:"flex",gap:10,marginBottom:20}}>
+        <Stat n={state.crops.length} label="crops"/><Stat n={planted.length} label="planted"/><Stat n={streak} label="day streak" accent/>
+      </div>
+
+      {!journaledToday&&<div className="tap fh-up" onClick={goJournal} style={{background:C.amberSoft,border:"1px solid #F0DEBE",borderRadius:16,padding:"15px 17px",marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:22}}>📔</span><span style={{flex:1,fontSize:15,fontWeight:600,color:"#7A5311"}}>Add today's garden note</span><span style={{color:C.amber}}>→</span>
+      </div>}
+
+      <div className="fh-up" style={{background:C.greenDeep,color:"#EAF3EC",borderRadius:16,padding:"17px 18px",marginBottom:22}}>
+        <div style={{fontSize:12.5,letterSpacing:".12em",textTransform:"uppercase",opacity:.75,fontWeight:700,marginBottom:6}}>Tip of the day</div>
+        {tip?<div style={{fontSize:16,lineHeight:1.5}}>{tip}</div>
+          :<button className="tap" onClick={getTip} disabled={tipLoad} style={{background:"rgba(255,255,255,.16)",color:"#fff",border:"none",borderRadius:10,padding:"9px 15px",fontSize:14.5,fontWeight:600}}>{tipLoad?"Thinking…":(aiOn?"✨ Get today's tip":"Get today's tip")}</button>}
+      </div>
+
+      {todays.length>0&&<>
+        <SectionLabel>Next up</SectionLabel>
+        <div style={{display:"grid",gap:9,marginBottom:22}}>
+          {todays.slice(0,3).map(({crop,task})=>(
+            <div key={task.id} className="tap" onClick={()=>openCrop(crop.id)} style={{display:"flex",alignItems:"center",gap:12,background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"13px 15px"}}>
+              <span style={{fontSize:20}}>{crop.emoji}</span><span style={{flex:1,fontSize:15}}>{task.text}</span><span style={{fontSize:13,color:C.muted}}>{crop.name}</span>
+            </div>))}
+        </div>
+      </>}
+
+      <SectionLabel>Your crops</SectionLabel>
+      <div style={{display:"grid",gap:12}}>
+        {state.crops.map(c=>{const p=progress(c);return(
+          <div key={c.id} className="tap fh-up" onClick={()=>openCrop(c.id)} style={{background:C.surface,border:`1px solid ${c.suitable?C.border:"#F0DEBE"}`,borderRadius:16,padding:"16px 17px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:13}}>
+              <span style={{fontSize:30}}>{c.emoji}</span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:17}}>{c.name}</div>
+                <div style={{fontSize:13.5,color:p.stage==="Ready to harvest"?C.green:C.inkSoft}}>
+                  {!c.suitable?"⚠ Tricky for now — tap to see why":p.planted?`${p.stage} · ${p.daysLeft} days to harvest`:`Ready to plant · ${c.difficulty}`}
+                </div>
+              </div>
+              <span style={{color:C.muted}}>→</span>
+            </div>
+            {p.planted&&<div style={{height:6,background:C.line,borderRadius:99,marginTop:13,overflow:"hidden"}}><div style={{width:p.pct+"%",height:"100%",background:C.green,borderRadius:99,transition:"width .4s"}}/></div>}
+          </div>);})}
+      </div>
+
+      {state.suggestions&&state.suggestions.length>0&&<>
+        <SectionLabel>You might also try</SectionLabel>
+        <div style={{display:"flex",gap:9,flexWrap:"wrap"}}>
+          {state.suggestions.map((s,i)=><span key={i} style={{background:C.greenSoft,color:C.greenDeep,borderRadius:99,padding:"9px 14px",fontSize:14,fontWeight:600}}>{s.emoji} {s.name}</span>)}
+        </div>
+      </>}
+
+      <button className="tap" onClick={onReset} style={{display:"block",margin:"30px auto 0",background:"none",border:"none",color:C.muted,fontSize:14,textDecoration:"underline"}}>Start a new garden</button>
+    </div>
+  );
+}
+
+// ============================ CROP DETAIL ============================
+function CropDetail({crop,profile,journal,aiOn,onBack,onUpdate,onJournal}){
+  const p=progress(crop);
+  const [tip,setTip]=useState(null),[tipLoad,setTipLoad]=useState(false),[note,setNote]=useState("");
+  const toggleTask=id=>onUpdate({...crop,tasks:crop.tasks.map(t=>t.id===id?{...t,done:!t.done}:t)});
+  const plantNow=()=>onUpdate({...crop,plantedDate:Date.now()});
+  async function getTip(){
+    setTipLoad(true);
+    const ai=await callClaude(`Warm gardening coach. ${PERSONA} Give ONE short specific tip (under 35 words) for this crop now. Plain text, no preamble.`,`Crop: ${crop.name}. Stage: ${p.stage}, ${p.daysSince} days in. Location: ${profile.country}, ${currentSeason(profile.country)}. Recent note: ${(journal[0]&&journal[0].text)||"none"}.`);
+    setTip(ai||localCropTip(p.stage,crop.name)); setTipLoad(false);
+  }
+  function saveNote(){ if(!note.trim())return; onJournal({id:"j"+Date.now(),date:todayKey(),cropId:crop.id,cropName:crop.name,emoji:crop.emoji,text:note.trim(),at:Date.now()}); setNote(""); }
+
+  return (
+    <div style={{paddingTop:22}}>
+      <button className="tap" onClick={onBack} style={{background:"none",border:"none",color:C.inkSoft,fontSize:15,padding:0,marginBottom:16}}>← Garden</button>
+      <div className="fh-up" style={{textAlign:"center",marginBottom:22}}>
+        <div style={{fontSize:56}}>{crop.emoji}</div>
+        <h1 style={{fontFamily:"'Fraunces',serif",fontSize:30,fontWeight:600,margin:"6px 0 4px"}}>{crop.name}</h1>
+        <div style={{fontSize:14.5,color:C.inkSoft}}>{crop.difficulty} · {crop.daysToHarvest} days to harvest</div>
+      </div>
+      {!crop.suitable&&<div style={{background:C.amberSoft,border:"1px solid #F0DEBE",borderRadius:14,padding:"14px 16px",marginBottom:18,fontSize:14.5,color:"#7A5311"}}>⚠ {crop.note}</div>}
+      {p.planted?(
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:18,marginBottom:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><span style={{fontWeight:700,color:p.pct>=100?C.green:C.ink}}>{p.stage}{p.pct>=100?" 🎉":""}</span><span style={{color:C.inkSoft,fontSize:14.5}}>{p.daysLeft} days left</span></div>
+          <div style={{height:8,background:C.line,borderRadius:99,overflow:"hidden"}}><div style={{width:p.pct+"%",height:"100%",background:C.green,borderRadius:99}}/></div>
+          <div style={{fontSize:13,color:C.muted,marginTop:8}}>Planted {p.daysSince} {p.daysSince===1?"day":"days"} ago</div>
+        </div>
+      ):(
+        <button className="tap" onClick={plantNow} style={{width:"100%",background:C.green,color:"#fff",border:"none",borderRadius:14,padding:16,fontSize:16.5,fontWeight:700,marginBottom:18}}>🌱 I've planted this — start tracking</button>
+      )}
+      {crop.note&&crop.suitable&&<p style={{fontSize:15.5,lineHeight:1.6,color:C.inkSoft,marginBottom:18}}>{crop.note}</p>}
+      <SectionLabel>Tasks</SectionLabel>
+      <div style={{display:"grid",gap:9,marginBottom:22}}>
+        {crop.tasks.map(t=>(
+          <div key={t.id} className="tap" onClick={()=>toggleTask(t.id)} style={{display:"flex",alignItems:"center",gap:12,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"13px 15px"}}>
+            <CheckBox on={t.done}/><span style={{fontSize:15.5,color:t.done?C.muted:C.ink,textDecoration:t.done?"line-through":"none"}}>{t.text}</span>
+          </div>))}
+      </div>
+      <div style={{background:C.greenSoft,borderRadius:16,padding:"16px 17px",marginBottom:22}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:tip?8:0}}>
+          <span style={{fontSize:18}}>✨</span><span style={{fontWeight:700,color:C.greenDeep,flex:1}}>Coach tip</span>
+          {!tip&&<button className="tap" onClick={getTip} disabled={tipLoad} style={{background:C.green,color:"#fff",border:"none",borderRadius:9,padding:"7px 13px",fontSize:14,fontWeight:600}}>{tipLoad?"…":"Ask"}</button>}
+        </div>
+        {tip&&<div style={{fontSize:15.5,lineHeight:1.55,color:C.greenDeep}}>{tip}</div>}
+      </div>
+      <SectionLabel>Add a note</SectionLabel>
+      <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={`How's your ${crop.name.toLowerCase()} doing today?`} style={{width:"100%",minHeight:80,border:`1.5px solid ${C.border}`,borderRadius:13,padding:"13px 15px",fontSize:15.5,resize:"vertical",background:C.surface,color:C.ink}}/>
+      <button className="tap" onClick={saveNote} disabled={!note.trim()} style={{width:"100%",marginTop:10,background:note.trim()?C.ink:C.border,color:note.trim()?"#fff":C.muted,border:"none",borderRadius:12,padding:13,fontSize:15.5,fontWeight:700}}>Save note</button>
+      {journal.length>0&&<div style={{marginTop:22}}><SectionLabel>This crop's journal</SectionLabel>{journal.map(j=><JournalRow key={j.id} j={j}/>)}</div>}
+    </div>
+  );
+}
+
+// ============================ JOURNAL ============================
+function Journal({state,aiOn,onAdd}){
+  const [text,setText]=useState(""),[cropId,setCropId]=useState(""),[tip,setTip]=useState(null),[load,setLoad]=useState(false);
+  async function save(){
+    if(!text.trim())return;
+    const crop=state.crops.find(c=>c.id===cropId);
+    onAdd({id:"j"+Date.now(),date:todayKey(),cropId:cropId||null,cropName:crop&&crop.name,emoji:crop&&crop.emoji,text:text.trim(),at:Date.now()});
+    const noteText=text.trim(); setText(""); setCropId(""); setLoad(true); setTip(null);
+    const ai=await callClaude(`Warm gardening coach. ${PERSONA} The grower just wrote a journal note. Reply with ONE short encouraging, useful response (under 35 words). Plain text, no preamble.`,`Note${crop?` about ${crop.name}`:""}: "${noteText}". Location: ${state.profile.country}, ${currentSeason(state.profile.country)}.`);
+    setTip(ai||localJournalReply(noteText)); setLoad(false);
+  }
+  const streak=streakOf(state.journal);
+  return (
+    <div style={{paddingTop:24}}>
+      <div className="fh-up" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+        <h1 style={{fontFamily:"'Fraunces',serif",fontSize:28,fontWeight:600,margin:0}}>Journal</h1>
+        {streak>0&&<span style={{background:C.amberSoft,color:"#7A5311",borderRadius:99,padding:"7px 13px",fontSize:14,fontWeight:700}}>🔥 {streak} day{streak>1?"s":""}</span>}
+      </div>
+      <div className="fh-up" style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:16,marginBottom:14}}>
+        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="What did you notice in the garden today?" style={{width:"100%",minHeight:84,border:"none",fontSize:16,resize:"vertical",background:"transparent",color:C.ink}}/>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8,marginBottom:12}}>
+          <Chip on={cropId===""} onClick={()=>setCropId("")}>General</Chip>
+          {state.crops.map(c=><Chip key={c.id} on={cropId===c.id} onClick={()=>setCropId(c.id)}>{c.emoji} {c.name}</Chip>)}
+        </div>
+        <button className="tap" onClick={save} disabled={!text.trim()} style={{width:"100%",background:text.trim()?C.green:C.border,color:text.trim()?"#fff":C.muted,border:"none",borderRadius:12,padding:13,fontSize:15.5,fontWeight:700}}>Save today's note</button>
+      </div>
+      {(load||tip)&&<div className="fh-pop" style={{background:C.greenSoft,borderRadius:14,padding:"14px 16px",marginBottom:20,fontSize:15.5,lineHeight:1.5,color:C.greenDeep}}>{load?<span style={{color:C.green}}>✨ Reading your note…</span>:<><strong>✨ </strong>{tip}</>}</div>}
+      {state.journal.length===0?(
+        <div style={{textAlign:"center",color:C.muted,padding:"40px 20px",fontSize:15}}>No notes yet. A line a day builds the habit — and the harvest.</div>
+      ):(
+        <div><SectionLabel>History</SectionLabel>{state.journal.map(j=><JournalRow key={j.id} j={j} showCrop/>)}</div>
+      )}
+    </div>
+  );
+}
+function JournalRow({j,showCrop}){
+  const d=new Date(j.at||Date.now());
+  return (
+    <div style={{display:"flex",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.line}`}}>
+      <span style={{fontSize:20,width:24,textAlign:"center"}}>{j.emoji||"📔"}</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:12.5,color:C.muted,marginBottom:3}}>{d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}{showCrop&&j.cropName?` · ${j.cropName}`:""}</div>
+        <div style={{fontSize:15.5,lineHeight:1.5}}>{j.text}</div>
+      </div>
+    </div>
+  );
+}
+
+// ============================ SETTINGS (AI key) ============================
+function Settings({aiOn,onClose,onChange}){
+  const [key,setKey]=useState(getApiKey());
+  function save(){ setApiKey(key.trim()); onChange(); onClose(); }
+  function clear(){ setApiKey(""); setKey(""); onChange(); }
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(20,20,16,.45)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div className="fh-up" onClick={e=>e.stopPropagation()} style={{background:C.surface,width:"100%",maxWidth:480,borderRadius:"22px 22px 0 0",padding:"24px 22px calc(28px + env(safe-area-inset-bottom))"}}>
+        <div style={{width:40,height:4,background:C.border,borderRadius:99,margin:"0 auto 18px"}}/>
+        <h2 style={{fontFamily:"'Fraunces',serif",fontSize:23,fontWeight:600,margin:"0 0 4px"}}>AI coaching</h2>
+        <p style={{fontSize:15,color:C.inkSoft,lineHeight:1.55,margin:"0 0 16px"}}>
+          The garden, plans and tracking all work without this. Add an Anthropic API key to switch the tip of the day, coach tips and journal replies to personalised AI.
+        </p>
+        <Label>Anthropic API key</Label>
+        <input value={key} onChange={e=>setKey(e.target.value)} placeholder="sk-ant-…" type="password"
+          style={{width:"100%",fontSize:15,padding:"14px 15px",borderRadius:12,border:`1.5px solid ${C.border}`,background:C.bg,color:C.ink}}/>
+        <div style={{background:C.amberSoft,borderRadius:12,padding:"12px 14px",margin:"14px 0",fontSize:13.5,lineHeight:1.5,color:"#7A5311"}}>
+          ⚠ For personal/local use only. A key entered here is stored in this browser and sent directly to Anthropic — never put a key in a publicly shared copy. For a real launch, route AI calls through your own backend instead.
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          {aiOn&&<button className="tap" onClick={clear} style={{background:"none",border:`1.5px solid ${C.border}`,borderRadius:99,padding:"14px 20px",fontSize:15,fontWeight:600,color:C.inkSoft}}>Remove</button>}
+          <button className="tap" onClick={save} style={{flex:1,background:C.green,color:"#fff",border:"none",borderRadius:99,padding:14,fontSize:15.5,fontWeight:700}}>Save</button>
+        </div>
+        <button className="tap" onClick={onClose} style={{display:"block",margin:"14px auto 0",background:"none",border:"none",color:C.muted,fontSize:14}}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================ PRIMITIVES ============================
+function Brand(){ return <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:22}}>🌱</span><span style={{fontFamily:"'Fraunces',serif",fontSize:19,fontWeight:600,color:C.greenDeep}}>First Harvest</span></div>; }
+const H2=({children})=><h2 style={{fontFamily:"'Fraunces',serif",fontSize:26,fontWeight:600,margin:"0 0 6px",letterSpacing:"-.01em"}}>{children}</h2>;
+const Sub=({children})=><p style={{fontSize:16,color:C.inkSoft,margin:"0 0 22px",lineHeight:1.5}}>{children}</p>;
+const Label=({children})=><div style={{fontSize:13.5,fontWeight:700,color:C.inkSoft,marginBottom:8}}>{children}</div>;
+const SectionLabel=({children})=><div style={{fontSize:12.5,letterSpacing:".1em",textTransform:"uppercase",color:C.muted,fontWeight:700,margin:"0 0 12px"}}>{children}</div>;
+function Stat({n,label,accent}){ return <div style={{flex:1,background:accent?C.amberSoft:C.surface,border:`1px solid ${accent?"#F0DEBE":C.border}`,borderRadius:14,padding:"14px 10px",textAlign:"center"}}><div style={{fontFamily:"'Fraunces',serif",fontSize:26,fontWeight:600,color:accent?"#7A5311":C.ink}}>{n}</div><div style={{fontSize:12.5,color:C.muted,marginTop:2}}>{label}</div></div>; }
+function CheckBox({on,round}){ return <span style={{width:24,height:24,borderRadius:round?"50%":7,border:`2px solid ${on?C.green:C.border}`,background:on?C.green:"#fff",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{on?"✓":""}</span>; }
+function Choice({value,setValue,options}){ return <div style={{display:"grid",gap:10}}>{options.map(o=>{const on=value===o.v;return <div key={o.v} className="tap" onClick={()=>setValue(o.v)} style={{display:"flex",alignItems:"center",gap:12,padding:"15px 17px",borderRadius:13,background:on?C.greenSoft:C.surface,border:`1.5px solid ${on?C.green:C.border}`}}><CheckBox on={on} round/><div><div style={{fontSize:16,fontWeight:600}}>{o.l}</div><div style={{fontSize:13.5,color:C.muted}}>{o.v}</div></div></div>;})}</div>; }
+function Chip({on,onClick,children}){ return <span className="tap" onClick={onClick} style={{background:on?C.green:C.bg,color:on?"#fff":C.inkSoft,border:`1px solid ${on?C.green:C.border}`,borderRadius:99,padding:"7px 13px",fontSize:13.5,fontWeight:600}}>{children}</span>; }
+function Spinner({big}){ const s=big?40:26; return <div style={{width:s,height:s,border:`3px solid ${C.border}`,borderTopColor:C.green,borderRadius:"50%",margin:"0 auto",animation:"spin .8s linear infinite"}}/>; }
+function SearchSelect({value,onChange,options,placeholder,allowCustom,disabled}){
+  const [q,setQ]=useState(""),[open,setOpen]=useState(false); const ref=useRef(null);
+  useEffect(()=>{ function h(e){ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); } document.addEventListener("mousedown",h); return ()=>document.removeEventListener("mousedown",h); },[]);
+  const query=open?q:""; const matches=options.filter(o=>o.toLowerCase().includes(query.toLowerCase())).slice(0,6);
+  const showCustom=allowCustom&&q.trim()&&!options.some(o=>o.toLowerCase()===q.toLowerCase());
+  return (
+    <div ref={ref} style={{position:"relative",opacity:disabled?.5:1,pointerEvents:disabled?"none":"auto"}}>
+      <input value={open?q:value} placeholder={placeholder} onFocus={()=>{setOpen(true);setQ("");}} onChange={e=>{setQ(e.target.value);setOpen(true);}}
+        style={{width:"100%",fontSize:16,padding:"15px 16px",borderRadius:13,border:`1.5px solid ${C.border}`,background:C.surface,color:C.ink}}/>
+      {open&&(matches.length>0||showCustom)&&(
+        <div className="fh-pop" style={{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,boxShadow:"0 12px 30px rgba(0,0,0,.1)",overflow:"hidden",zIndex:20}}>
+          {matches.map(m=><div key={m} className="tap" onClick={()=>{onChange(m);setOpen(false);setQ("");}} style={{padding:"13px 16px",fontSize:15.5,borderBottom:`1px solid ${C.line}`}}>{m}</div>)}
+          {showCustom&&<div className="tap" onClick={()=>{onChange(q.trim());setOpen(false);setQ("");}} style={{padding:"13px 16px",fontSize:15.5,color:C.green,fontWeight:600}}>Use "{q.trim()}"</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+function BottomNav({view,go}){
+  const items=[{k:"home",icon:"🌿",label:"Garden"},{k:"journal",icon:"📔",label:"Journal"}];
+  return (
+    <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:30}}>
+      <div style={{maxWidth:480,margin:"0 auto",background:"rgba(255,255,255,.92)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 calc(8px + env(safe-area-inset-bottom))"}}>
+        {items.map(it=>{const on=view===it.k;return(
+          <button key={it.k} className="tap" onClick={()=>go(it.k)} style={{flex:1,background:"none",border:"none",padding:"8px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:on?C.green:C.muted}}>
+            <span style={{fontSize:21,filter:on?"none":"grayscale(.5) opacity(.7)"}}>{it.icon}</span>
+            <span style={{fontSize:11.5,fontWeight:on?700:500}}>{it.label}</span>
+          </button>);})}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
